@@ -1,4 +1,5 @@
 import httpx
+from app.trusted import is_trusted
 
 BYBIT_P2P_URL = "https://api2.bybit.com/fiat/otc/item/online"
 HEADERS = {
@@ -13,36 +14,37 @@ PAYMENT_METHODS = {
 }
 COMMISSION = 0.0
 
-async def fetch_p2p_offers(fiat, crypto, side, rows=15):
+async def fetch_p2p_offers(fiat, crypto, side, rows=20):
     payload = {
         "tokenId": crypto, "currencyId": fiat,
         "side": "1" if side == "BUY" else "0",
         "size": str(rows), "page": "1", "amount": "", "paymentMethod": []
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10) as client:
         response = await client.post(BYBIT_P2P_URL, json=payload, headers=HEADERS)
         data = response.json()
         offers = []
         for item in data.get("result", {}).get("items", []):
-            user_id = item.get("userId", "")
+            user_id = str(item.get("userId", ""))
+            nick = item.get("nickName", "")
             raw_payments = item.get("payments", [])
             payment_names = [PAYMENT_METHODS.get(str(p), f"#{p}") for p in raw_payments]
             trade_count = int(item.get("recentOrderNum", 0))
             raw_rate = float(item.get("recentExecuteRate", 0))
-            completion_rate = raw_rate * 100 if raw_rate <= 1.0 else raw_rate
-            completion_rate = min(completion_rate, 100.0)
+            completion_rate = round(min(raw_rate * 100 if raw_rate <= 1.0 else raw_rate, 100.0), 1)
             offers.append({
                 "exchange": "Bybit",
                 "price": float(item.get("price", 0)),
                 "min_amount": float(item.get("minAmount", 0)),
                 "max_amount": float(item.get("maxAmount", 0)),
                 "currency": fiat, "crypto": crypto, "side": side,
-                "advertiser": item.get("nickName"),
+                "advertiser": nick,
+                "advertiser_id": user_id,
                 "commission": COMMISSION,
                 "url": f"https://www.bybit.com/fiat/trade/otc/profile/{user_id}" if user_id else None,
                 "payment_methods": payment_names,
                 "trade_count": trade_count,
-                "completion_rate": round(completion_rate, 1),
-                "trusted": trade_count > 300 and completion_rate > 95
+                "completion_rate": completion_rate,
+                "trusted": is_trusted("bybit", user_id, nick),
             })
         return offers
