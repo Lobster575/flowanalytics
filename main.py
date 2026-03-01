@@ -1,11 +1,11 @@
-try:
-    from app.cache import cache
-    from app.collectors import bybit_p2p, binance_p2p
-    from app.market import fetch_chart, fetch_trending
-except ImportError:
-    from cache import cache
-    from collectors import bybit_p2p, binance_p2p
-    from market import fetch_chart, fetch_trending
+import asyncio
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.cache import cache
+from app.collectors import bybit_p2p, binance_p2p
+from app.market import fetch_chart, fetch_trending
 
 app.add_middleware(
     CORSMiddleware,
@@ -76,32 +76,29 @@ async def trending():
 
 @app.get("/p2p/spread")
 async def best_spread():
-    """Find best spread across currency pairs."""
-    pairs = [("PLN","USDT"), ("EUR","USDT"), ("USD","USDT"), ("GBP","USDT")]
-    tasks = []
-    labels = []
-    for fiat, crypto in pairs:
-        for side in ["BUY", "SELL"]:
-            for ex in ["bybit", "binance"]:
-                cache_key = f"p2p:{ex}:{fiat}:{crypto}:{side}"
-                cached = cache.get(cache_key)
-                if cached:
-                    labels.append((fiat, crypto, side, ex))
-                    tasks.append(asyncio.coroutine(lambda c=cached: c)())
+    pairs = [
+        ("PLN", "USDT"),
+        ("EUR", "USDT"),
+        ("USD", "USDT"),
+        ("GBP", "USDT"),
+    ]
 
-    best_buy = {}  # fiat -> best buy price
-    best_sell = {}  # fiat -> best sell price
+    best_buy = {}
+    best_sell = {}
 
     for fiat, crypto in pairs:
         for ex in ["bybit", "binance"]:
             buy_key = f"p2p:{ex}:{fiat}:{crypto}:BUY"
             sell_key = f"p2p:{ex}:{fiat}:{crypto}:SELL"
+
             buys = cache.get(buy_key) or []
             sells = cache.get(sell_key) or []
+
             if buys:
                 bp = min(o["price"] for o in buys)
                 if fiat not in best_buy or bp < best_buy[fiat]["price"]:
                     best_buy[fiat] = {"price": bp, "exchange": ex}
+
             if sells:
                 sp = max(o["price"] for o in sells)
                 if fiat not in best_sell or sp > best_sell[fiat]["price"]:
@@ -114,8 +111,10 @@ async def best_spread():
         if fiat in best_sell:
             buy_p = best_buy[fiat]["price"]
             sell_p = best_sell[fiat]["price"]
+
             if buy_p > 0:
                 pct = (sell_p - buy_p) / buy_p * 100
+
                 if pct > best_pct:
                     best_pct = pct
                     best_spread = {
@@ -128,4 +127,5 @@ async def best_spread():
                     }
 
     return {"spread": best_spread}
+
 
