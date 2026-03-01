@@ -1,7 +1,5 @@
-try:
-    from app.trusted import is_trusted
-except ImportError:
-    from trusted import is_trusted
+import httpx
+from app.trusted import is_trusted
 BYBIT_P2P_URL = "https://api2.bybit.com/fiat/otc/item/online"
 HEADERS = {
     "Content-Type": "application/json",
@@ -49,4 +47,5 @@ async def fetch_p2p_offers(fiat, crypto, side, rows=20):
                 "trusted": is_trusted("bybit", user_id, nick),
             })
         return offers
+
 
