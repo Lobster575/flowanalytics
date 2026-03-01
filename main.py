@@ -55,7 +55,7 @@ async def trending():
         data = await fetch_trending()
         cache.set("trending", data, ttl=60)
     return {"data": data}
-
+333
 @app.get("/p2p/spread")
 async def best_spread():
     pairs = [("PLN","USDT"),("EUR","USDT"),("USD","USDT"),("GBP","USDT")]
