@@ -1,7 +1,5 @@
-try:
-    from app.trusted import is_trusted
-except ImportError:
-    from trusted import is_trusted
+import httpx
+from app.trusted import is_trusted
 
 BINANCE_P2P_URL = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
 HEADERS = {
@@ -48,4 +46,5 @@ async def fetch_p2p_offers(fiat, crypto, side, rows=20):
     except Exception as e:
         print(f"Binance P2P error: {e}")
         return []
+
 
