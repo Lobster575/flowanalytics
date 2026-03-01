@@ -3,9 +3,9 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.cache import cache
-from app.collectors import bybit_p2p, binance_p2p
-from app.market import fetch_chart, fetch_trending
+from cache import cache
+from collectors import bybit_p2p, binance_p2p
+from  market import fetch_chart, fetch_trending
 
 app.add_middleware(
     CORSMiddleware,
@@ -127,4 +127,5 @@ async def best_spread():
                     }
 
     return {"spread": best_spread}
+
 
