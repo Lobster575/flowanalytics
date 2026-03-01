@@ -6,10 +6,11 @@ TRUSTED = {
         # "123456789": "verified partner",
     },
     "binance": {
-        # "advertiser_no_here": "verified partner",
+       "BXNEXCHANGE"
     },
 }
 
 def is_trusted(exchange: str, advertiser_id: str, advertiser_name: str) -> bool:
     ex = TRUSTED.get(exchange.lower(), {})
+
     return advertiser_id in ex or advertiser_name in ex
