@@ -1,6 +1,4 @@
-from .collectors import bybit_p2p, binance_p2p
-from .market import fetch_chart, fetch_trending
-from .cache import cache
+from app.main import app
 
 app.add_middleware(
     CORSMiddleware,
@@ -122,7 +120,6 @@ async def best_spread():
                     }
 
     return {"spread": best_spread}
-
 
 
 
