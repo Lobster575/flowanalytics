@@ -158,6 +158,9 @@ async def best_spread():
 
     spreads.sort(key=lambda x: x["spread_pct"], reverse=True)
     profitable = [s for s in spreads if s["profitable"]]
+    spreads = [s for s in spreads if -50 < s["spread_pct"] < 10]
+    spreads.sort(key=lambda x: x["spread_pct"], reverse=True)
+    profitable = [s for s in spreads if s["profitable"]]
 
     return {
         "spread":     spreads[0] if spreads else None,
