@@ -75,7 +75,6 @@ async def trending():
 
 
 async def _fetch_and_cache(exchange: str, fiat: str, crypto: str, side: str) -> list:
-    """Берёт из кэша или запрашивает живые данные."""
     cache_key = f"p2p:{exchange}:{fiat}:{crypto}:{side}"
     offers = cache.get(cache_key)
     if offers is None:
@@ -90,11 +89,6 @@ async def _fetch_and_cache(exchange: str, fiat: str, crypto: str, side: str) -> 
 
 @app.get("/p2p/spread")
 async def best_spread():
-    """
-    Параллельно сканирует ВСЕ комбинации:
-    10 валют × 4 крипты × 2 биржи × 2 стороны = 160 запросов.
-    Возвращает все связки BUY→SELL с их спредом, отсортированные по прибыльности.
-    """
     tasks, keys = [], []
     for fiat in SUPPORTED_FIATS:
         for crypto in SUPPORTED_CRYPTOS:
@@ -105,15 +99,12 @@ async def best_spread():
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Индекс: (ex, fiat, crypto, side) -> offers
     index = {}
     for (ex, fiat, crypto, side), result in zip(keys, results):
         if isinstance(result, list):
             index[(ex, fiat, crypto, side)] = result
 
-    # Лучшая цена покупки (min) и продажи (max) по каждой паре
-    # с учётом обеих бирж
-    pair_buy  = {}  # (fiat, crypto) -> {price, exchange, advertiser}
+    pair_buy  = {}
     pair_sell = {}
 
     for (ex, fiat, crypto, side), offers in index.items():
@@ -127,6 +118,7 @@ async def best_spread():
                     "price":      best_o["price"],
                     "exchange":   ex,
                     "advertiser": best_o.get("advertiser", ""),
+                    "url":        best_o.get("url", ""),
                 }
         else:
             best_o = max(offers, key=lambda o: o["price"])
@@ -135,9 +127,9 @@ async def best_spread():
                     "price":      best_o["price"],
                     "exchange":   ex,
                     "advertiser": best_o.get("advertiser", ""),
+                    "url":        best_o.get("url", ""),
                 }
 
-    # Считаем спред для всех пар где есть обе стороны
     spreads = []
     for key in pair_buy:
         if key not in pair_sell:
@@ -160,14 +152,16 @@ async def best_spread():
             "sell_exchange":   sell["exchange"],
             "buy_advertiser":  buy["advertiser"],
             "sell_advertiser": sell["advertiser"],
+            "buy_url":         buy["url"],
+            "sell_url":        sell["url"],
         })
 
     spreads.sort(key=lambda x: x["spread_pct"], reverse=True)
     profitable = [s for s in spreads if s["profitable"]]
 
     return {
-        "spread":     spreads[0] if spreads else None,  # лучший (для баннера)
-        "all":        spreads,                          # все пары
-        "profitable": profitable,                       # только прибыльные
+        "spread":     spreads[0] if spreads else None,
+        "all":        spreads,
+        "profitable": profitable,
         "scanned":    len(spreads),
     }
