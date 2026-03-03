@@ -37,7 +37,7 @@ PAYMENT_METHODS = {
 }
 COMMISSION = 0.0
 
-async def fetch_p2p_offers(fiat, crypto, side, rows=20):
+async def fetch_p2p_offers(fiat, crypto, side, rows=40):
     payload = {
         "tokenId": crypto, "currencyId": fiat,
         "side": "1" if side == "BUY" else "0",
@@ -89,3 +89,4 @@ async def fetch_p2p_offers(fiat, crypto, side, rows=20):
                 "trusted":       is_trusted("bybit", user_id, nick),
             })
         return offers
+
