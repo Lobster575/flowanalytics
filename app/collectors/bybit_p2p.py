@@ -1,16 +1,31 @@
 import httpx
 from app.trusted import is_trusted
+
 BYBIT_P2P_URL = "https://api2.bybit.com/fiat/otc/item/online"
 HEADERS = {
     "Content-Type": "application/json",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
-PAYMENT_METHODS = {
-    "14": "Bank Transfer", "9": "Revolut", "133": "Wise", "139": "PayPal",
-    "154": "SEPA", "159": "Faster Payments", "355": "BLIK", "357": "Paysend",
-    "174": "Skrill", "147": "Neteller", "292": "Crypto.com", "22": "WebMoney",
-    "416": "MB WAY", "77": "Payoneer", "234": "Neosurf",
+BYBIT_PAYMENT_NAMES = {
+    "14":  "BLIK",
+    "15":  "Revolut",
+    "64":  "Paysend",
+    "65":  "WebMoney",
+    "75":  "Wise",
+    "328": "Faster Payments",
+    "377": "SEPA",
+    "382": "Bank Transfer",
+    "591": "Neteller",
+    "592": "Skrill",
+    "3":   "Bank Transfer",
 }
+
+# при формировании оффера:
+"payment_methods": [
+    BYBIT_PAYMENT_NAMES.get(str(pm["paymentType"]), pm.get("paymentName", str(pm["paymentType"])))
+    for pm in item["payments"]
+]
+
 COMMISSION = 0.0
 
 async def fetch_p2p_offers(fiat, crypto, side, rows=20):
@@ -47,7 +62,3 @@ async def fetch_p2p_offers(fiat, crypto, side, rows=20):
                 "trusted": is_trusted("bybit", user_id, nick),
             })
         return offers
-
-
-
-
