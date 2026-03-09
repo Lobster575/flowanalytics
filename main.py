@@ -58,13 +58,16 @@ async def _rate_wait(exchange: str):
 # ─── Fetch with retry + exponential backoff ──────────────────────────────────
 async def _fetch_with_retry(
     exchange: str, fiat: str, crypto: str, side: str,
-    max_retries: int = 3,
+    max_retries: int = 2,
 ) -> list:
     module = EXCHANGES.get(exchange.lower(), bybit_p2p)
     for attempt in range(max_retries):
         try:
             await _rate_wait(exchange)
-            return await module.fetch_p2p_offers(fiat, crypto, side)
+            return await asyncio.wait_for(
+                module.fetch_p2p_offers(fiat, crypto, side),
+                timeout=9.0
+            )
         except Exception as exc:
             wait = 2 ** attempt          # 1 s → 2 s → 4 s
             logger.warning(
@@ -281,31 +284,77 @@ async def trending():
 
 
 # ─── Spread ───────────────────────────────────────────────────────────────────
+# Priority pairs for spread scan — only these are fetched on cache miss.
+# Everything else is read from cache if already populated by /p2p endpoint.
+SPREAD_PRIORITY_PAIRS = [
+    ("PLN",  "USDT"), ("EUR",  "USDT"), ("USD",  "USDT"),
+    ("GBP",  "USDT"), ("NGN",  "USDT"), ("PLN",  "BTC"),
+    ("EUR",  "BTC"),  ("USD",  "BTC"),
+]
+
+
 async def _fetch_and_cache(exchange: str, fiat: str, crypto: str, side: str) -> list:
     cache_key = f"p2p:{exchange}:{fiat}:{crypto}:{side}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
     try:
-        fresh = await _fetch_with_retry(exchange, fiat, crypto, side)
+        # No rate_wait here for spread — we use a semaphore at caller level
+        module = EXCHANGES.get(exchange.lower(), bybit_p2p)
+        fresh = await module.fetch_p2p_offers(fiat, crypto, side)
         cache.set(cache_key, fresh, ttl=25)
         return fresh
     except Exception:
         return []
 
 
+# Semaphore: at most 4 concurrent live fetches during spread scan
+_spread_sem = asyncio.Semaphore(4)
+
+async def _spread_fetch(exchange: str, fiat: str, crypto: str, side: str) -> list:
+    """Cache-first; only hits network for priority pairs, with semaphore."""
+    cache_key = f"p2p:{exchange}:{fiat}:{crypto}:{side}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    # Only fetch live if this is a priority pair
+    if (fiat, crypto) not in SPREAD_PRIORITY_PAIRS:
+        return []
+    async with _spread_sem:
+        try:
+            return await asyncio.wait_for(
+                _fetch_and_cache(exchange, fiat, crypto, side),
+                timeout=8.0
+            )
+        except Exception:
+            return []
+
+
 @app.get("/p2p/spread")
 async def best_spread():
-    # Fetch all combinations in parallel
+    # Return cached result immediately if fresh
+    cached_result = cache.get("spread_result")
+    if cached_result and not cache.is_stale("spread_result"):
+        return cached_result
+
+    # Build task list — all known pairs, cache-first
     tasks, keys = [], []
     for fiat in SUPPORTED_FIATS:
         for crypto in SUPPORTED_CRYPTOS:
             for ex in EXCHANGES:
                 for side in ("BUY", "SELL"):
-                    tasks.append(_fetch_and_cache(ex, fiat, crypto, side))
+                    tasks.append(_spread_fetch(ex, fiat, crypto, side))
                     keys.append((ex, fiat, crypto, side))
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Hard cap: entire spread scan must finish within 12 s
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=12.0
+        )
+    except asyncio.TimeoutError:
+        logger.warning("spread scan timed out — returning partial results")
+        results = [[] for _ in keys]
 
     # Aggregate raw offers per (fiat, crypto, side) across exchanges
     pair_offers: dict[tuple, dict[str, list]] = {}
@@ -389,9 +438,13 @@ async def best_spread():
     spreads.sort(key=lambda x: x["spread_pct"], reverse=True)
     profitable = [s for s in spreads if s["profitable"]]
 
-    return {
+    result = {
         "spread":     spreads[0] if spreads else None,
         "all":        spreads,
         "profitable": profitable,
         "scanned":    len(spreads),
     }
+    # Cache the full spread result for 30s so rapid refreshes hit cache
+    if spreads:
+        cache.set("spread_result", result, ttl=30)
+    return result
