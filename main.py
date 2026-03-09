@@ -20,7 +20,8 @@ app.add_middleware(
 
 EXCHANGES = {"bybit": bybit_p2p, "binance": binance_p2p}
 
-SUPPORTED_FIATS   = ["PLN", "EUR", "USD", "GBP", "CZK", "HUF", "CAD", "NGN", "ILS", "JPY"]
+SUPPORTED_FIATS   = ["PLN", "EUR", "USD", "GBP", "CZK", "HUF", "CAD", "NGN", "ILS", "JPY",
+                     "AED", "INR", "GEL", "TRY", "AMD", "AZN", "UZS"]
 SUPPORTED_CRYPTOS = ["USDT", "BTC", "ETH", "USDC"]
 
 CRYPTO_SET = set(SUPPORTED_CRYPTOS)
@@ -191,6 +192,7 @@ async def p2p(
     sort:      str   = "price",
     min_rate:  float = 0,
     payment:   str   = "",
+    amount:    float = 0,
 ):
     real_fiat, real_crypto, real_side = normalize_pair(fiat, crypto, side)
     if real_fiat is None:
@@ -230,6 +232,12 @@ async def p2p(
             o for o in offers
             if any(payment.lower() in pm.lower()
                    for pm in o.get("payment_methods", []))
+        ]
+
+    if amount > 0:
+        offers = [
+            o for o in offers
+            if o.get("min_amount", 0) <= amount <= o.get("max_amount", float("inf"))
         ]
 
     # ── Sort ─────────────────────────────────────────────────────────────
